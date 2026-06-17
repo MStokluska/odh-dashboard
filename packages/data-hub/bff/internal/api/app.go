@@ -172,6 +172,7 @@ func (app *App) Routes() http.Handler {
 	// Unity Catalog proxy
 	apiRouter.GET(CatalogsPath, app.CatalogsHandler)
 	apiRouter.POST(CatalogsPath, app.CreateCatalogHandler)
+	apiRouter.DELETE(CatalogPath, app.DeleteCatalogHandler)
 	apiRouter.GET(PermissionsPath, app.GetCatalogPermissionsHandler)
 	apiRouter.PATCH(PermissionsPath, app.UpdateCatalogPermissionsHandler)
 
@@ -181,12 +182,21 @@ func (app *App) Routes() http.Handler {
 	apiRouter.POST(CatalogMembersPath, app.AddCatalogMemberHandler)
 
 	// Schemas, tables, volumes
+	apiRouter.GET(SchemasPath, app.ListSchemasHandler)
 	apiRouter.POST(SchemasPath, app.CreateSchemaHandler)
+	apiRouter.DELETE(SchemasPath+"/:schema", app.DeleteSchemaHandler)
+	apiRouter.GET(TablesPath, app.ListTablesHandler)
 	apiRouter.POST(TablesPath, app.CreateTableHandler)
+	apiRouter.DELETE(TablesPath+"/:table", app.DeleteTableHandler)
+	apiRouter.GET(VolumesPath, app.ListVolumesHandler)
 	apiRouter.POST(VolumesPath, app.CreateVolumeHandler)
+	apiRouter.DELETE(VolumesPath+"/:volume", app.DeleteVolumeHandler)
 
 	// Volume provenance (Milvus stats)
 	apiRouter.GET(ProvenancePath, app.MilvusStatsHandler)
+
+	// Table version history (Delta stats from Marquez)
+	apiRouter.GET(TableVersionsPath, app.TableVersionsHandler)
 
 	// UI config
 	apiRouter.GET(ConfigPath, app.ConfigHandler)
@@ -228,43 +238,41 @@ func (app *App) Routes() http.Handler {
 	// OpenShift Users
 	apiRouter.GET(ApiPathPrefix+"/ocp-users", app.ListOCPUsersHandler)
 
-	// App Router
-	appMux := http.NewServeMux()
+	// API routes — with auth middleware (skips identity injection if X-Auth-Request-User is present)
+	authedAPI := app.RecoverPanic(app.EnableTelemetry(app.EnableCORS(app.InjectRequestIdentity(apiRouter))))
 
-	// handler for api calls
-	appMux.Handle(ApiPathPrefix+"/", apiRouter)
-	appMux.Handle(PathPrefix+ApiPathPrefix+"/", http.StripPrefix(PathPrefix, apiRouter))
-	appMux.Handle("/data-hub"+ApiPathPrefix+"/", http.StripPrefix("/data-hub", apiRouter))
+	// API routes without strict auth (for federated mode where RHOAI proxy handles auth)
+	noAuthAPI := app.RecoverPanic(app.EnableTelemetry(app.EnableCORS(apiRouter)))
 
-	// file server for the frontend file and SPA routes
+	// Static file server — no auth
 	staticDir := http.Dir(app.config.StaticAssetsDir)
 	fileServer := http.FileServer(staticDir)
-	appMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	staticHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctxLogger := helper.GetContextLoggerFromReq(r)
-		// Check if the requested file exists
 		if _, err := staticDir.Open(r.URL.Path); err == nil {
 			ctxLogger.Debug("Serving static file", slog.String("path", r.URL.Path))
-			// Serve the file if it exists
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-
-		// Fallback to index.html for SPA routes
 		ctxLogger.Debug("Static asset not found, serving index.html", slog.String("path", r.URL.Path))
 		http.ServeFile(w, r, path.Join(app.config.StaticAssetsDir, "index.html"))
 	})
 
-	// Create a mux for the healthcheck endpoint
-	healthcheckMux := http.NewServeMux()
+	// Healthcheck — no auth
 	healthcheckRouter := httprouter.New()
 	healthcheckRouter.GET(HealthCheckPath, app.HealthcheckHandler)
-	healthcheckMux.Handle(HealthCheckPath, app.RecoverPanic(app.EnableTelemetry(healthcheckRouter)))
 
-	// Combines the healthcheck endpoint with the rest of the routes
-	// Apply middleware to appMux which contains the API routes
+	// Combined mux: API with auth, static without
 	combinedMux := http.NewServeMux()
-	combinedMux.Handle(HealthCheckPath, healthcheckMux)
-	combinedMux.Handle("/", app.RecoverPanic(app.EnableTelemetry(app.EnableCORS(app.InjectRequestIdentity(appMux)))))
+	combinedMux.Handle(HealthCheckPath, app.RecoverPanic(app.EnableTelemetry(healthcheckRouter)))
+	apiHandler := authedAPI
+	if os.Getenv("DEPLOYMENT_MODE") == "federated" {
+		apiHandler = noAuthAPI
+	}
+	combinedMux.Handle(ApiPathPrefix+"/", apiHandler)
+	combinedMux.Handle(PathPrefix+ApiPathPrefix+"/", http.StripPrefix(PathPrefix, apiHandler))
+	combinedMux.Handle("/data-hub"+ApiPathPrefix+"/", http.StripPrefix("/data-hub", apiHandler))
+	combinedMux.Handle("/", app.RecoverPanic(app.EnableTelemetry(staticHandler)))
 
 	return combinedMux
 }

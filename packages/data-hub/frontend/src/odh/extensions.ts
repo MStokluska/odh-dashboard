@@ -27,16 +27,6 @@ const extensions: (NavExtension | RouteExtension | AreaExtension)[] = [
     },
   },
   {
-    type: 'app.navigation/href',
-    properties: {
-      id: 'data-hub-admin',
-      title: 'Manage catalogs & users',
-      href: '/data-hub/admin',
-      section: 'data-hub',
-      path: '/data-hub/admin/*',
-    },
-  },
-  {
     type: 'app.route',
     properties: {
       path: '/data-hub/main-view/*',
@@ -46,35 +36,8 @@ const extensions: (NavExtension | RouteExtension | AreaExtension)[] = [
   {
     type: 'app.route',
     properties: {
-      path: '/data-hub/admin/*',
-      component: () => import('./DataHubAdminWrapper'),
-    },
-  },
-  {
-    type: 'app.navigation/href',
-    properties: {
-      id: 'data-hub-permissions',
-      title: 'Manage permissions',
-      href: '/data-hub/permissions',
-      section: 'data-hub',
-      path: '/data-hub/permissions/*',
-    },
-  },
-  {
-    type: 'app.route',
-    properties: {
       path: '/data-hub/permissions/*',
       component: () => import('./DataHubPermissionsWrapper'),
-    },
-  },
-  {
-    type: 'app.navigation/href',
-    properties: {
-      id: 'data-hub-apps',
-      title: 'Registered apps',
-      href: '/data-hub/apps',
-      section: 'data-hub',
-      path: '/data-hub/apps/*',
     },
   },
   {

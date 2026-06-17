@@ -52,12 +52,11 @@ func (app *App) GetPermissionsHandler(w http.ResponseWriter, r *http.Request, ps
 	}
 
 	client := newUCClient()
-	token := getUCAdminToken()
+	
 
-	scimURL := fmt.Sprintf("%s/api/1.0/unity-control/scim2/Users", getUCDirectURL())
+	scimURL := fmt.Sprintf("%s/api/1.0/unity-control/scim2/Users", getUCAdminURL())
 	scimReq, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, scimURL, nil)
-	scimReq.Header.Set("Authorization", "Bearer "+token)
-	scimReq.Header.Set("Cookie", "UC_TOKEN="+token)
+	scimReq.Header.Set("X-Auth-Request-User", "admin")
 	scimResp, err := client.Do(scimReq)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
@@ -78,28 +77,28 @@ func (app *App) GetPermissionsHandler(w http.ResponseWriter, r *http.Request, ps
 	var nameField string
 	switch resType {
 	case "catalog":
-		listURL = fmt.Sprintf("%s/api/2.1/unity-catalog/catalogs", getUCDirectURL())
+		listURL = fmt.Sprintf("%s/api/2.1/unity-catalog/catalogs", getUCAdminURL())
 		nameField = "catalogs"
 	case "schema":
 		if len(parts) < 1 {
 			app.badRequestResponse(w, r, fmt.Errorf("invalid schema name"))
 			return
 		}
-		listURL = fmt.Sprintf("%s/api/2.1/unity-catalog/schemas?catalog_name=%s", getUCDirectURL(), parts[0])
+		listURL = fmt.Sprintf("%s/api/2.1/unity-catalog/schemas?catalog_name=%s", getUCAdminURL(), parts[0])
 		nameField = "schemas"
 	case "volume":
 		if len(parts) < 2 {
 			app.badRequestResponse(w, r, fmt.Errorf("invalid volume name"))
 			return
 		}
-		listURL = fmt.Sprintf("%s/api/2.1/unity-catalog/volumes?catalog_name=%s&schema_name=%s", getUCDirectURL(), parts[0], parts[1])
+		listURL = fmt.Sprintf("%s/api/2.1/unity-catalog/volumes?catalog_name=%s&schema_name=%s", getUCAdminURL(), parts[0], parts[1])
 		nameField = "volumes"
 	case "table":
 		if len(parts) < 2 {
 			app.badRequestResponse(w, r, fmt.Errorf("invalid table name"))
 			return
 		}
-		listURL = fmt.Sprintf("%s/api/2.1/unity-catalog/tables?catalog_name=%s&schema_name=%s", getUCDirectURL(), parts[0], parts[1])
+		listURL = fmt.Sprintf("%s/api/2.1/unity-catalog/tables?catalog_name=%s&schema_name=%s", getUCAdminURL(), parts[0], parts[1])
 		nameField = "tables"
 	}
 
@@ -111,8 +110,7 @@ func (app *App) GetPermissionsHandler(w http.ResponseWriter, r *http.Request, ps
 			continue
 		}
 		probe, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, listURL, nil)
-		probe.Header.Set("Authorization", "Bearer "+token)
-		probe.Header.Set("Cookie", "UC_TOKEN="+token)
+		probe.Header.Set("X-Auth-Request-User", "admin")
 		probe.Header.Set("X-Auth-Request-User", user.UserName)
 
 		probeResp, pErr := client.Do(probe)
@@ -189,7 +187,7 @@ func (app *App) PatchPermissionsHandler(w http.ResponseWriter, r *http.Request, 
 	json.Unmarshal(body, &req)
 
 	client := newUCClient()
-	token := getUCAdminToken()
+	
 
 	for _, change := range req.Changes {
 		users, err := resolvePrincipal(r, change.Principal, change.Type)
@@ -199,7 +197,7 @@ func (app *App) PatchPermissionsHandler(w http.ResponseWriter, r *http.Request, 
 		}
 
 		for _, user := range users {
-			ensureSCIMUser(client, token, user)
+			ensureSCIMUser(client, "", user)
 			ucChange := map[string]interface{}{"principal": user}
 			if len(change.Add) > 0 {
 				ucChange["add"] = change.Add
@@ -212,11 +210,8 @@ func (app *App) PatchPermissionsHandler(w http.ResponseWriter, r *http.Request, 
 				"changes": []interface{}{ucChange},
 			})
 
-			ucURL := fmt.Sprintf("%s/api/2.1/unity-catalog/permissions/%s/%s", getUCDirectURL(), resType, fullName)
-			ucReq, _ := http.NewRequest(http.MethodPatch, ucURL, stringReader(string(ucBody)))
-			ucReq.Header.Set("Authorization", "Bearer "+token)
-			ucReq.Header.Set("Cookie", "UC_TOKEN="+token)
-			ucReq.Header.Set("Content-Type", "application/json")
+			ucURL := fmt.Sprintf("%s/api/2.1/unity-catalog/permissions/%s/%s", getUCAdminURL(), resType, fullName)
+			ucReq, _ := ucAdminRequest(r, http.MethodPatch, ucURL, stringReader(string(ucBody)))
 
 			resp, err := client.Do(ucReq)
 			if err != nil {
@@ -238,19 +233,7 @@ func resolvePrincipal(r *http.Request, principal, principalType string) ([]strin
 }
 
 func ensureSCIMUser(client *http.Client, token, userName string) {
-	scimBody := fmt.Sprintf(
-		`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"%s","displayName":"%s","active":true,"emails":[{"value":"%s","primary":true}]}`,
-		userName, userName, userName,
-	)
-	scimURL := fmt.Sprintf("%s/api/1.0/unity-control/scim2/Users", getUCDirectURL())
-	req, _ := http.NewRequest(http.MethodPost, scimURL, stringReader(scimBody))
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Cookie", "UC_TOKEN="+token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err == nil {
-		resp.Body.Close()
-	}
+	ensureUCSCIMUser(userName)
 }
 
 type propagateSchemaRequest struct {
@@ -276,13 +259,12 @@ func (app *App) PropagateSchemaHandler(w http.ResponseWriter, r *http.Request, _
 	}
 
 	client := newUCClient()
-	token := getUCAdminToken()
+	
 	schemaFull := req.Catalog + "." + req.Schema
 
-	volsURL := fmt.Sprintf("%s/api/2.1/unity-catalog/volumes?catalog_name=%s&schema_name=%s", getUCDirectURL(), req.Catalog, req.Schema)
+	volsURL := fmt.Sprintf("%s/api/2.1/unity-catalog/volumes?catalog_name=%s&schema_name=%s", getUCAdminURL(), req.Catalog, req.Schema)
 	volsReq, _ := http.NewRequest(http.MethodGet, volsURL, nil)
-	volsReq.Header.Set("Authorization", "Bearer "+token)
-	volsReq.Header.Set("Cookie", "UC_TOKEN="+token)
+	volsReq.Header.Set("X-Auth-Request-User", "admin")
 	volsResp, err := client.Do(volsReq)
 	var volumes []string
 	if err == nil {
@@ -299,10 +281,9 @@ func (app *App) PropagateSchemaHandler(w http.ResponseWriter, r *http.Request, _
 		}
 	}
 
-	tabsURL := fmt.Sprintf("%s/api/2.1/unity-catalog/tables?catalog_name=%s&schema_name=%s", getUCDirectURL(), req.Catalog, req.Schema)
+	tabsURL := fmt.Sprintf("%s/api/2.1/unity-catalog/tables?catalog_name=%s&schema_name=%s", getUCAdminURL(), req.Catalog, req.Schema)
 	tabsReq, _ := http.NewRequest(http.MethodGet, tabsURL, nil)
-	tabsReq.Header.Set("Authorization", "Bearer "+token)
-	tabsReq.Header.Set("Cookie", "UC_TOKEN="+token)
+	tabsReq.Header.Set("X-Auth-Request-User", "admin")
 	tabsResp, err := client.Do(tabsReq)
 	var tables []string
 	if err == nil {
@@ -321,23 +302,23 @@ func (app *App) PropagateSchemaHandler(w http.ResponseWriter, r *http.Request, _
 
 	granted := 0
 	for _, user := range users {
-		ensureSCIMUser(client, token, user)
+		ensureSCIMUser(client, "", user)
 
 		if req.IncludeCatalog {
-			grantUCPermission(client, token, "catalog", req.Catalog, user, "USE CATALOG")
+			grantUCPermission(client, "catalog", req.Catalog, user, "USE CATALOG")
 			granted++
 		}
 
-		grantUCPermission(client, token, "schema", schemaFull, user, "USE SCHEMA")
+		grantUCPermission(client, "schema", schemaFull, user, "USE SCHEMA")
 		granted++
 
 		for _, vol := range volumes {
-			grantUCPermission(client, token, "volume", vol, user, "READ VOLUME")
+			grantUCPermission(client, "volume", vol, user, "READ VOLUME")
 			granted++
 		}
 
 		for _, tbl := range tables {
-			grantUCPermission(client, token, "table", tbl, user, "SELECT")
+			grantUCPermission(client, "table", tbl, user, "SELECT")
 			granted++
 		}
 	}
@@ -347,12 +328,11 @@ func (app *App) PropagateSchemaHandler(w http.ResponseWriter, r *http.Request, _
 		len(users), granted, len(volumes), len(tables))
 }
 
-func grantUCPermission(client *http.Client, token, resType, fullName, principal, privilege string) {
+func grantUCPermission(client *http.Client, resType, fullName, principal, privilege string) {
 	body := fmt.Sprintf(`{"changes":[{"principal":"%s","add":["%s"]}]}`, principal, privilege)
-	ucURL := fmt.Sprintf("%s/api/2.1/unity-catalog/permissions/%s/%s", getUCDirectURL(), resType, fullName)
+	ucURL := fmt.Sprintf("%s/api/2.1/unity-catalog/permissions/%s/%s", getUCAdminURL(), resType, fullName)
 	req, _ := http.NewRequest(http.MethodPatch, ucURL, stringReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Cookie", "UC_TOKEN="+token)
+	req.Header.Set("X-Auth-Request-User", "admin")
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err == nil {

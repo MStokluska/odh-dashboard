@@ -44,9 +44,9 @@ func (app *App) TracesHandler(w http.ResponseWriter, r *http.Request, _ httprout
 	}
 
 	mlflowURL := getEnvOrDefault("MLFLOW_URL", "")
-	workspace := getEnvOrDefault("MLFLOW_WORKSPACE", "mstoklus")
+	workspace := getEnvOrDefault("MLFLOW_WORKSPACE", "")
 
-	tracesURL := fmt.Sprintf("%s/mlflow/api/2.0/mlflow/traces?experiment_ids=%s&max_results=%d",
+	tracesURL := fmt.Sprintf("%s/mlflow/ajax-api/2.0/mlflow/traces?experiment_ids=%s&max_results=%d",
 		mlflowURL, experimentID, limit*3)
 
 	client := &http.Client{

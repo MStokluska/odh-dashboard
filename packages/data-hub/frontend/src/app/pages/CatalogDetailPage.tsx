@@ -93,19 +93,21 @@ const CatalogDetailPage: React.FC<CatalogDetailPageProps> = ({ catalogName, onBa
   const [showCreateTable, setShowCreateTable] = React.useState(false);
   const [newTableSchema, setNewTableSchema] = React.useState('');
   const [newTableName, setNewTableName] = React.useState('');
+  const [newTableFormat, setNewTableFormat] = React.useState('DELTA');
+  const [newTableLocation, setNewTableLocation] = React.useState('');
   const [newTableColumns, setNewTableColumns] = React.useState('');
   const [creatingTable, setCreatingTable] = React.useState(false);
 
   const [showCreateVolume, setShowCreateVolume] = React.useState(false);
   const [newVolumeName, setNewVolumeName] = React.useState('');
+  const [newVolumeLocation, setNewVolumeLocation] = React.useState('');
   const [newVolumeSchema, setNewVolumeSchema] = React.useState('');
   const [creatingVolume, setCreatingVolume] = React.useState(false);
 
   const [uiConfig, setUiConfig] = React.useState<{
     marquezUrl: string;
+    marquezApiUrl: string;
     mlflowUrl: string;
-    mlflowExperimentId: string;
-    mlflowWorkspace: string;
   } | null>(null);
 
   React.useEffect(() => {
@@ -166,30 +168,33 @@ const CatalogDetailPage: React.FC<CatalogDetailPageProps> = ({ catalogName, onBa
   };
 
   const handleCreateTable = () => {
+    setError(null);
     setCreatingTable(true);
     const typeMap: Record<string, string> = {
       int: 'INT', integer: 'INT', long: 'LONG', string: 'STRING',
       double: 'DOUBLE', float: 'FLOAT', boolean: 'BOOLEAN',
       date: 'DATE', timestamp: 'TIMESTAMP',
     };
-    const columns = newTableColumns.split(',').map((col, idx) => {
-      const parts = col.trim().split(' ');
-      const colName = parts[0];
-      const colType = (parts[1] || 'string').toLowerCase();
-      const typeName = typeMap[colType] || 'STRING';
-      return {
-        name: colName, type_text: colType, type_name: typeName,
-        type_json: JSON.stringify({ type: colType }),
-        position: idx, nullable: true, type_precision: 0, type_scale: 0,
-      };
-    });
+    const columns = newTableColumns.trim()
+      ? newTableColumns.split(',').map((col, idx) => {
+          const parts = col.trim().split(' ');
+          const colName = parts[0];
+          const colType = (parts[1] || 'string').toLowerCase();
+          const typeName = typeMap[colType] || 'STRING';
+          return {
+            name: colName, type_text: typeName, type_name: typeName,
+            type_json: JSON.stringify({ name: colName, type: colType, nullable: true, metadata: {} }),
+            position: idx,
+          };
+        })
+      : [];
     fetch(`${API_PREFIX}/catalogs/${catalogName}/schemas/${newTableSchema}/tables`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: newTableName, catalog_name: catalogName, schema_name: newTableSchema,
-        table_type: 'EXTERNAL', data_source_format: 'DELTA',
-        storage_location: `/tmp/uc/${catalogName}/${newTableSchema}/${newTableName}`,
+        table_type: 'EXTERNAL', data_source_format: newTableFormat,
+        storage_location: newTableLocation || `s3://poc-underwriting/tables/${catalogName}/${newTableSchema}/${newTableName}`,
         columns,
       }),
     })
@@ -202,6 +207,8 @@ const CatalogDetailPage: React.FC<CatalogDetailPageProps> = ({ catalogName, onBa
       .then(() => {
         setShowCreateTable(false);
         setNewTableName('');
+        setNewTableFormat('DELTA');
+        setNewTableLocation('');
         setNewTableColumns('');
         setNewTableSchema('');
         fetchDetail();
@@ -218,7 +225,7 @@ const CatalogDetailPage: React.FC<CatalogDetailPageProps> = ({ catalogName, onBa
       body: JSON.stringify({
         name: newVolumeName, catalog_name: catalogName, schema_name: newVolumeSchema,
         volume_type: 'EXTERNAL',
-        storage_location: `/tmp/uc/${catalogName}/${newVolumeSchema}/volumes/${newVolumeName}`,
+        storage_location: newVolumeLocation || `s3://poc-underwriting/volumes/${catalogName}/${newVolumeSchema}/${newVolumeName}`,
       }),
     })
       .then((r) => {
@@ -246,11 +253,9 @@ const CatalogDetailPage: React.FC<CatalogDetailPageProps> = ({ catalogName, onBa
       <SchemaDetailPage
         catalogName={catalogName}
         schema={selectedSchema}
-        onBack={() => setSelectedSchema(null)}
+        onBack={() => { setSelectedSchema(null); fetchDetail(); }}
         marquezUrl={uiConfig?.marquezUrl}
         mlflowUrl={uiConfig?.mlflowUrl}
-        mlflowExperimentId={uiConfig?.mlflowExperimentId}
-        mlflowWorkspace={uiConfig?.mlflowWorkspace}
       />
     );
   }
@@ -345,6 +350,38 @@ const CatalogDetailPage: React.FC<CatalogDetailPageProps> = ({ catalogName, onBa
                               <Content component="small"><strong>Volumes:</strong> {s.volumes.map((v) => v.name).join(', ')}</Content>
                             </StackItem>
                           ) : null}
+                          <StackItem>
+                            <Split hasGutter>
+                              <SplitItem>
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  icon={<PlusCircleIcon />}
+                                  onClick={(e: React.MouseEvent) => {
+                                    e.stopPropagation();
+                                    setNewTableSchema(s.name);
+                                    setShowCreateTable(true);
+                                  }}
+                                >
+                                  Add table
+                                </Button>
+                              </SplitItem>
+                              <SplitItem>
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  icon={<PlusCircleIcon />}
+                                  onClick={(e: React.MouseEvent) => {
+                                    e.stopPropagation();
+                                    setNewVolumeSchema(s.name);
+                                    setShowCreateVolume(true);
+                                  }}
+                                >
+                                  Add volume
+                                </Button>
+                              </SplitItem>
+                            </Split>
+                          </StackItem>
                         </Stack>
                       </CardBody>
                     </Card>
@@ -384,13 +421,19 @@ const CatalogDetailPage: React.FC<CatalogDetailPageProps> = ({ catalogName, onBa
               <FormGroup label="Table name" isRequired fieldId="table-name">
                 <TextInput id="table-name" value={newTableName} onChange={(_e, v) => setNewTableName(v)} isRequired />
               </FormGroup>
-              <FormGroup label="Columns" isRequired fieldId="table-columns" helperText="Comma-separated: name type, e.g. 'id int, name string'">
-                <TextInput id="table-columns" value={newTableColumns} onChange={(_e, v) => setNewTableColumns(v)} placeholder="id int, name string, score double" isRequired />
+              <FormGroup label="Format" fieldId="table-format">
+                <TextInput id="table-format" value={newTableFormat} onChange={(_e, v) => setNewTableFormat(v)} placeholder="DELTA" />
+              </FormGroup>
+              <FormGroup label="Storage location" fieldId="table-location">
+                <TextInput id="table-location" value={newTableLocation} onChange={(_e, v) => setNewTableLocation(v)} placeholder="s3://bucket/path" />
+              </FormGroup>
+              <FormGroup label="Columns" fieldId="table-columns" helperText="Comma-separated: name type, e.g. 'id int, name string'. Leave empty for no columns.">
+                <TextInput id="table-columns" value={newTableColumns} onChange={(_e, v) => setNewTableColumns(v)} placeholder="id int, name string, score double" />
               </FormGroup>
             </Form>
           </ModalBody>
           <ModalFooter>
-            <Button variant="primary" onClick={handleCreateTable} isDisabled={!newTableName || !newTableColumns || creatingTable} isLoading={creatingTable}>Create</Button>
+            <Button variant="primary" onClick={handleCreateTable} isDisabled={!newTableName || creatingTable} isLoading={creatingTable}>Create</Button>
             <Button variant="link" onClick={() => setShowCreateTable(false)}>Cancel</Button>
           </ModalFooter>
         </Modal>
@@ -403,6 +446,9 @@ const CatalogDetailPage: React.FC<CatalogDetailPageProps> = ({ catalogName, onBa
             <Form>
               <FormGroup label="Volume name" isRequired fieldId="volume-name">
                 <TextInput id="volume-name" value={newVolumeName} onChange={(_e, v) => setNewVolumeName(v)} isRequired />
+              </FormGroup>
+              <FormGroup label="Storage location" fieldId="volume-location">
+                <TextInput id="volume-location" value={newVolumeLocation} onChange={(_e, v) => setNewVolumeLocation(v)} placeholder="s3://bucket/path" />
               </FormGroup>
             </Form>
           </ModalBody>

@@ -24,8 +24,9 @@ import {
   Stack,
   StackItem,
 } from '@patternfly/react-core';
-import { ExternalLinkAltIcon, DatabaseIcon, FolderIcon, EyeIcon } from '@patternfly/react-icons';
+import { ExternalLinkAltIcon, DatabaseIcon, FolderIcon, EyeIcon, TrashIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import VolumeProvenancePage from './VolumeProvenancePage';
+import TableProvenancePage from './TableProvenancePage';
 
 type ColumnInfo = {
   name: string;
@@ -61,9 +62,9 @@ type SchemaDetailPageProps = {
   onBack: () => void;
   marquezUrl?: string;
   mlflowUrl?: string;
-  mlflowExperimentId?: string;
-  mlflowWorkspace?: string;
 };
+
+const API_PREFIX = '/data-hub/api/v1';
 
 const SchemaDetailPage: React.FC<SchemaDetailPageProps> = ({
   catalogName,
@@ -71,10 +72,47 @@ const SchemaDetailPage: React.FC<SchemaDetailPageProps> = ({
   onBack,
   marquezUrl = '',
   mlflowUrl = '',
-  mlflowExperimentId = '59',
-  mlflowWorkspace = 'mstoklus',
 }) => {
   const [selectedVolume, setSelectedVolume] = React.useState<VolumeInfo | null>(null);
+  const [selectedTable, setSelectedTable] = React.useState<TableInfo | null>(null);
+  const [isAdmin, setIsAdmin] = React.useState(false);
+
+  React.useEffect(() => {
+    fetch(`${API_PREFIX}/admin`)
+      .then((r) => r.json())
+      .then((data) => setIsAdmin(data.isAdmin === true))
+      .catch(() => {});
+  }, []);
+
+  const handleDelete = (type: string, name: string) => {
+    if (!window.confirm(`Delete ${type} "${name}"?`)) {
+      return;
+    }
+    const url =
+      type === 'table'
+        ? `${API_PREFIX}/catalogs/${catalogName}/schemas/${schema.name}/tables/${name}`
+        : type === 'volume'
+          ? `${API_PREFIX}/catalogs/${catalogName}/schemas/${schema.name}/volumes/${name}`
+          : '';
+    if (url) {
+      fetch(url, { method: 'DELETE' }).then(() => onBack());
+    }
+  };
+
+
+  if (selectedTable) {
+    return (
+      <TableProvenancePage
+        catalogName={catalogName}
+        schemaName={schema.name}
+        tableName={selectedTable.name}
+        tableFormat={selectedTable.data_source_format}
+        marquezUrl={marquezUrl}
+        mlflowUrl={mlflowUrl}
+        onBack={() => setSelectedTable(null)}
+      />
+    );
+  }
 
   if (selectedVolume) {
     return (
@@ -84,8 +122,6 @@ const SchemaDetailPage: React.FC<SchemaDetailPageProps> = ({
         volume={selectedVolume}
         marquezUrl={marquezUrl}
         mlflowUrl={mlflowUrl}
-        mlflowExperimentId={mlflowExperimentId}
-        mlflowWorkspace={mlflowWorkspace}
         onBack={() => setSelectedVolume(null)}
       />
     );
@@ -163,6 +199,17 @@ const SchemaDetailPage: React.FC<SchemaDetailPageProps> = ({
                             <FlexItem>
                               <Label isCompact>{t.table_type}</Label>
                             </FlexItem>
+                            {isAdmin ? (
+                              <FlexItem>
+                                <Button
+                                  variant="plain"
+                                  aria-label={`Delete table ${t.name}`}
+                                  onClick={() => handleDelete('table', t.name)}
+                                >
+                                  <TrashIcon />
+                                </Button>
+                              </FlexItem>
+                            ) : null}
                           </Flex>
                         </SplitItem>
                       </Split>
@@ -226,6 +273,15 @@ const SchemaDetailPage: React.FC<SchemaDetailPageProps> = ({
                             <FlexItem>
                               <Button
                                 variant="link"
+                                icon={<EyeIcon />}
+                                onClick={() => setSelectedTable(t)}
+                              >
+                                View Provenance
+                              </Button>
+                            </FlexItem>
+                            <FlexItem>
+                              <Button
+                                variant="link"
                                 icon={<ExternalLinkAltIcon />}
                                 component="a"
                                 href={`${marquezUrl}/lineage/dataset/${catalogName}/${schema.name}.${t.name}`}
@@ -234,17 +290,8 @@ const SchemaDetailPage: React.FC<SchemaDetailPageProps> = ({
                                 Lineage
                               </Button>
                             </FlexItem>
-                            <FlexItem>
-                              <Button
-                                variant="link"
-                                icon={<ExternalLinkAltIcon />}
-                                component="a"
-                                href={`${mlflowUrl}/mlflow/#/experiments/${mlflowExperimentId}/traces?workspace=${mlflowWorkspace}`}
-                                target="_blank"
-                              >
-                                MLflow Traces
-                              </Button>
-                            </FlexItem>
+
+
                           </Flex>
                         </StackItem>
                       </Stack>
@@ -281,6 +328,17 @@ const SchemaDetailPage: React.FC<SchemaDetailPageProps> = ({
                             {v.volume_type}
                           </Label>
                         </SplitItem>
+                        {isAdmin ? (
+                          <SplitItem>
+                            <Button
+                              variant="plain"
+                              aria-label={`Delete volume ${v.name}`}
+                              onClick={() => handleDelete('volume', v.name)}
+                            >
+                              <TrashIcon />
+                            </Button>
+                          </SplitItem>
+                        ) : null}
                       </Split>
                     </CardTitle>
                     <CardBody>
@@ -334,17 +392,8 @@ const SchemaDetailPage: React.FC<SchemaDetailPageProps> = ({
                                 Lineage
                               </Button>
                             </FlexItem>
-                            <FlexItem>
-                              <Button
-                                variant="link"
-                                icon={<ExternalLinkAltIcon />}
-                                component="a"
-                                href={`${mlflowUrl}/mlflow/#/experiments/${mlflowExperimentId}/traces?workspace=${mlflowWorkspace}`}
-                                target="_blank"
-                              >
-                                MLflow Traces
-                              </Button>
-                            </FlexItem>
+
+
                           </Flex>
                         </StackItem>
                       </Stack>

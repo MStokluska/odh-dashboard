@@ -66,6 +66,9 @@ type RegisteredApp = {
   name: string;
   displayName: string;
   type: string;
+  mlflowExperimentId?: string;
+  mlflowWorkspace?: string;
+  milvusCollection?: string;
   volumes: string[];
 };
 
@@ -75,8 +78,6 @@ type VolumeProvenancePageProps = {
   volume: VolumeInfo;
   marquezUrl?: string;
   mlflowUrl?: string;
-  mlflowExperimentId?: string;
-  mlflowWorkspace?: string;
   onBack: () => void;
 };
 
@@ -88,8 +89,6 @@ const VolumeProvenancePage: React.FC<VolumeProvenancePageProps> = ({
   volume,
   marquezUrl = '',
   mlflowUrl = '',
-  mlflowExperimentId = '59',
-  mlflowWorkspace = 'mstoklus',
   onBack,
 }) => {
   const [milvusStats, setMilvusStats] = React.useState<MilvusStats | null>(null);
@@ -104,31 +103,40 @@ const VolumeProvenancePage: React.FC<VolumeProvenancePageProps> = ({
     setMilvusLoading(true);
     setTracesLoading(true);
 
+    const fullName = `${catalogName}.${schemaName}.${volume.name}`;
+
     Promise.all([
       fetch(
         `${API_PREFIX}/catalogs/${catalogName}/schemas/${schemaName}/volumes/${volume.name}/milvus-stats`,
       )
         .then((r) => r.json())
         .catch(() => ({ count: 0, source_docs: [], error: 'Failed to fetch Milvus stats' })),
-      fetch(
-        `${API_PREFIX}/traces?experiment_id=${mlflowExperimentId}&limit=20`,
-      )
-        .then((r) => r.json())
-        .catch(() => ({ traces: [] })),
       fetch(`${API_PREFIX}/apps`)
         .then((r) => r.json())
         .catch(() => ({ apps: [] })),
-    ]).then(([milvusData, tracesData, appsData]) => {
+    ]).then(([milvusData, appsData]) => {
       setMilvusStats(milvusData);
       setMilvusLoading(false);
-      setTraces(tracesData.traces || []);
-      setTracesLoading(false);
-      const fullName = `${catalogName}.${schemaName}.${volume.name}`;
-      setLinkedApps(
-        (appsData.apps || []).filter((a: RegisteredApp) => a.volumes?.includes(fullName)),
-      );
+
+      const allApps: RegisteredApp[] = appsData.apps || [];
+      const matched = allApps.filter((a) => a.volumes?.includes(fullName));
+      setLinkedApps(matched);
+
+      const firstApp = matched[0] || allApps[0];
+      const experimentId = firstApp?.mlflowExperimentId;
+      if (experimentId) {
+        fetch(`${API_PREFIX}/traces?experiment_id=${experimentId}&limit=20`)
+          .then((r) => r.json())
+          .then((data) => {
+            setTraces(data.traces || []);
+            setTracesLoading(false);
+          })
+          .catch(() => setTracesLoading(false));
+      } else {
+        setTracesLoading(false);
+      }
     });
-  }, [catalogName, schemaName, volume.name, mlflowExperimentId]);
+  }, [catalogName, schemaName, volume.name]);
 
   const filteredTraces = appFilter
     ? traces.filter((t) => t.app_name === appFilter)
@@ -136,8 +144,14 @@ const VolumeProvenancePage: React.FC<VolumeProvenancePageProps> = ({
 
   const appFilterOptions = [...new Set(traces.map((t) => t.app_name).filter(Boolean))];
 
+  const firstApp = linkedApps[0];
+  const mlflowExperimentId = firstApp?.mlflowExperimentId || '';
+  const mlflowWorkspace = firstApp?.mlflowWorkspace || '';
+
   const lineageUrl = `${marquezUrl}/lineage/dataset/${catalogName}/${schemaName}.${volume.name}?depth=10`;
-  const tracesUrl = `${mlflowUrl}/mlflow/#/experiments/${mlflowExperimentId}/traces?workspace=${mlflowWorkspace}`;
+  const tracesUrl = mlflowExperimentId
+    ? `${mlflowUrl}/mlflow/#/experiments/${mlflowExperimentId}/traces${mlflowWorkspace ? `?workspace=${mlflowWorkspace}` : ''}`
+    : '';
 
   return (
     <>

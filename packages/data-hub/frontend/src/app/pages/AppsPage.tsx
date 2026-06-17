@@ -48,6 +48,9 @@ type RegisteredApp = {
   type: string;
   endpoint: string;
   mlflowExperiment: string;
+  mlflowExperimentId: string;
+  mlflowWorkspace: string;
+  milvusCollection: string;
   volumes: string[];
   registeredAt: string;
 };
@@ -69,25 +72,22 @@ const AppsPage: React.FC = () => {
   const [formType, setFormType] = React.useState('deterministic');
   const [formEndpoint, setFormEndpoint] = React.useState('');
   const [formExperiment, setFormExperiment] = React.useState('');
+  const [formExperimentId, setFormExperimentId] = React.useState('');
+  const [formWorkspace, setFormWorkspace] = React.useState('');
+  const [formCollection, setFormCollection] = React.useState('');
   const [formVolumes, setFormVolumes] = React.useState<string[]>([]);
   const [typeSelectOpen, setTypeSelectOpen] = React.useState(false);
   const [volumeSelectOpen, setVolumeSelectOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
-
-  const [uiConfig, setUiConfig] = React.useState<{
-    mlflowExperimentId: string;
-  } | null>(null);
 
   const fetchData = React.useCallback(() => {
     setLoading(true);
     Promise.all([
       fetch(`${API_PREFIX}/apps`).then((r) => r.json()),
       fetch(`${API_PREFIX}/catalogs`).then((r) => r.json()),
-      fetch(`${API_PREFIX}/config`).then((r) => r.json()),
     ])
-      .then(([appsData, catalogsData, configData]) => {
+      .then(([appsData, catalogsData]) => {
         setApps(appsData.apps || []);
-        setUiConfig(configData);
 
         const catalogNames = (catalogsData.catalogs || []).map(
           (c: { name: string }) => c.name,
@@ -134,7 +134,10 @@ const AppsPage: React.FC = () => {
         displayName: formDisplayName,
         type: formType,
         endpoint: formEndpoint,
-        mlflowExperiment: formExperiment || uiConfig?.mlflowExperimentId || '',
+        mlflowExperiment: formExperiment,
+        mlflowExperimentId: formExperimentId,
+        mlflowWorkspace: formWorkspace,
+        milvusCollection: formCollection,
         volumes: formVolumes,
       }),
     })
@@ -162,6 +165,9 @@ const AppsPage: React.FC = () => {
     setFormType('deterministic');
     setFormEndpoint('');
     setFormExperiment('');
+    setFormExperimentId('');
+    setFormWorkspace('');
+    setFormCollection('');
     setFormVolumes([]);
   };
 
@@ -366,12 +372,36 @@ const AppsPage: React.FC = () => {
                   placeholder="https://my-app.apps.example.com"
                 />
               </FormGroup>
-              <FormGroup label="MLflow Experiment" fieldId="app-experiment">
+              <FormGroup label="MLflow Experiment Name" fieldId="app-experiment">
                 <TextInput
                   id="app-experiment"
                   value={formExperiment}
                   onChange={(_e, v) => setFormExperiment(v)}
-                  placeholder={uiConfig?.mlflowExperimentId || '59'}
+                  placeholder="poc-underwriting-rag"
+                />
+              </FormGroup>
+              <FormGroup label="MLflow Experiment ID" fieldId="app-experiment-id">
+                <TextInput
+                  id="app-experiment-id"
+                  value={formExperimentId}
+                  onChange={(_e, v) => setFormExperimentId(v)}
+                  placeholder="e.g. 1"
+                />
+              </FormGroup>
+              <FormGroup label="MLflow Workspace" fieldId="app-workspace">
+                <TextInput
+                  id="app-workspace"
+                  value={formWorkspace}
+                  onChange={(_e, v) => setFormWorkspace(v)}
+                  placeholder="e.g. mstoklus"
+                />
+              </FormGroup>
+              <FormGroup label="Milvus Collection" fieldId="app-collection">
+                <TextInput
+                  id="app-collection"
+                  value={formCollection}
+                  onChange={(_e, v) => setFormCollection(v)}
+                  placeholder="underwriting_guidelines"
                 />
               </FormGroup>
               <FormGroup label="Linked Volumes" fieldId="app-volumes">

@@ -15,7 +15,7 @@ func getMilvusURL() string {
 	if url := os.Getenv("MILVUS_URL"); url != "" {
 		return url
 	}
-	return "http://milvus.databricks-unity-marquez.svc:19530"
+	return ""
 }
 
 func getMilvusCollection() string {

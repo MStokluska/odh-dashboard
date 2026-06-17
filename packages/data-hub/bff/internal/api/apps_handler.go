@@ -19,13 +19,16 @@ const (
 )
 
 type RegisteredApp struct {
-	Name             string   `json:"name"`
-	DisplayName      string   `json:"displayName"`
-	Type             string   `json:"type"`
-	Endpoint         string   `json:"endpoint"`
-	MlflowExperiment string   `json:"mlflowExperiment"`
-	Volumes          []string `json:"volumes"`
-	RegisteredAt     string   `json:"registeredAt"`
+	Name               string   `json:"name"`
+	DisplayName        string   `json:"displayName"`
+	Type               string   `json:"type"`
+	Endpoint           string   `json:"endpoint"`
+	MlflowExperiment   string   `json:"mlflowExperiment"`
+	MlflowExperimentId string   `json:"mlflowExperimentId"`
+	MlflowWorkspace    string   `json:"mlflowWorkspace"`
+	MilvusCollection   string   `json:"milvusCollection"`
+	Volumes            []string `json:"volumes"`
+	RegisteredAt       string   `json:"registeredAt"`
 }
 
 type AppsRegistry struct {
@@ -43,7 +46,7 @@ func getAppsNamespace() string {
 	if ns := os.Getenv("APPS_NAMESPACE"); ns != "" {
 		return ns
 	}
-	return "mstoklus"
+	return ""
 }
 
 func (app *App) ListAppsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {

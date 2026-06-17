@@ -68,15 +68,21 @@ type PermGroup = {
 };
 
 const PRIVILEGE_OPTIONS: Record<string, string[]> = {
-  catalog: ['USE CATALOG'],
-  schema: ['USE SCHEMA'],
+  catalog: ['USE CATALOG', 'CATALOG ADMIN'],
+  schema: ['USE SCHEMA', 'CREATE TABLE', 'CREATE VOLUME'],
   volume: ['READ VOLUME', 'WRITE VOLUME'],
   table: ['SELECT', 'MODIFY'],
 };
 
+const CATALOG_ADMIN_PRIVILEGES = ['USE CATALOG', 'CREATE SCHEMA', 'SELECT', 'MODIFY'];
+
 const PRIVILEGE_COLORS: Record<string, 'green' | 'blue' | 'orange' | 'cyan'> = {
   'USE CATALOG': 'cyan',
   'USE SCHEMA': 'cyan',
+  'CATALOG ADMIN': 'orange',
+  'CREATE TABLE': 'blue',
+  'CREATE VOLUME': 'blue',
+  'CREATE SCHEMA': 'blue',
   'READ VOLUME': 'green',
   'WRITE VOLUME': 'orange',
   SELECT: 'green',
@@ -242,6 +248,11 @@ const PermissionsPage: React.FC = () => {
     }
 
     setSubmitting(true);
+    const expandedPrivileges = addPrivileges.includes('CATALOG ADMIN')
+      ? [...CATALOG_ADMIN_PRIVILEGES, ...addPrivileges.filter((p) => p !== 'CATALOG ADMIN')]
+      : addPrivileges;
+    const uniquePrivileges = [...new Set(expandedPrivileges)];
+
     fetch(`${API_PREFIX}/permissions/${addTarget.type}/${addTarget.fullName}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -250,7 +261,7 @@ const PermissionsPage: React.FC = () => {
           {
             principal,
             type: principalMode,
-            add: addPrivileges,
+            add: uniquePrivileges,
           },
         ],
       }),

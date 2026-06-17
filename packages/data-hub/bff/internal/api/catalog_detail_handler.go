@@ -64,7 +64,7 @@ func (app *App) CatalogDetailHandler(w http.ResponseWriter, r *http.Request, ps 
 	client := newUCClient()
 
 	schemasURL := fmt.Sprintf("%s/api/2.1/unity-catalog/schemas?catalog_name=%s", getUCDirectURL(), name)
-	schemasReq, _ := ucAdminRequest(r, http.MethodGet, schemasURL, nil)
+	schemasReq, _ := ucSmartReadRequest(r, http.MethodGet, schemasURL, nil)
 	schemasResp, err := client.Do(schemasReq)
 	var schemas []SchemaInfo
 	if err == nil {
@@ -81,7 +81,7 @@ func (app *App) CatalogDetailHandler(w http.ResponseWriter, r *http.Request, ps 
 			si := SchemaInfo{Name: s.Name, Comment: s.Comment}
 
 			tablesURL := fmt.Sprintf("%s/api/2.1/unity-catalog/tables?catalog_name=%s&schema_name=%s", getUCDirectURL(), name, s.Name)
-			tablesReq, _ := ucAdminRequest(r, http.MethodGet, tablesURL, nil)
+			tablesReq, _ := ucSmartReadRequest(r, http.MethodGet, tablesURL, nil)
 			tablesResp, tErr := client.Do(tablesReq)
 			if tErr == nil {
 				tBody, _ := io.ReadAll(tablesResp.Body)
@@ -123,7 +123,7 @@ func (app *App) CatalogDetailHandler(w http.ResponseWriter, r *http.Request, ps 
 			}
 
 			volsURL := fmt.Sprintf("%s/api/2.1/unity-catalog/volumes?catalog_name=%s&schema_name=%s", getUCDirectURL(), name, s.Name)
-			volsReq, _ := ucAdminRequest(r, http.MethodGet, volsURL, nil)
+			volsReq, _ := ucSmartReadRequest(r, http.MethodGet, volsURL, nil)
 			volsResp, vErr := client.Do(volsReq)
 			if vErr == nil {
 				vBody, _ := io.ReadAll(volsResp.Body)
